@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+# local TV credentials and personal settings
+.frametv/
+frametv.json
+tv-token.txt

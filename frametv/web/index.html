@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161a">
+<title>The Frame</title>
+<style>
+  :root {
+    --bg: #f4f2ee; --card: #fff; --fg: #1c1c1e; --muted: #6b6b70; --line: #e3e0da;
+    --accent: #b08d57; --accent-fg: #fff; --danger: #c0392b; --ok: #2e7d4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161a; --card: #1f2227; --fg: #f2f2f2; --muted: #9a9ca3; --line: #2e3238;
+            --accent: #c9a46a; --accent-fg: #14161a; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 16px 16px 96px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  .pill { font-size: 13px; padding: 4px 10px; border-radius: 99px; background: var(--card);
+          border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.on { color: var(--ok); } .pill.off { color: var(--danger); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+           border-radius: 12px; padding: 12px; cursor: pointer; min-height: 48px; }
+  button:active { transform: scale(.97); }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+  button.danger { color: var(--danger); }
+  button[disabled] { opacity: .5; }
+  .row { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
+  .dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-width: 260px; margin: 0 auto 12px; }
+  .dpad button { aspect-ratio: 1.3; font-size: 20px; }
+  .apps { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .apps button { text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow: auto; }
+  .list div { display: flex; align-items: center; gap: 8px; }
+  .list span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list button { min-height: 36px; padding: 6px 10px; font-size: 14px; }
+  label { display: block; color: var(--muted); font-size: 14px; margin: 8px 0 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, input[type=file] { width: 100%; font: inherit; padding: 10px; border-radius: 12px;
+           border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  nav { position: fixed; inset: auto 0 0 0; display: flex; background: var(--card); border-top: 1px solid var(--line);
+        padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
+  nav button { flex: 1; border: 0; background: none; color: var(--muted); }
+  nav button.active { color: var(--accent); font-weight: 600; }
+  .tab { display: none; } .tab.active { display: block; }
+  #toast { position: fixed; left: 16px; right: 16px; bottom: 84px; max-width: 488px; margin: 0 auto; padding: 12px 16px;
+           border-radius: 12px; background: var(--fg); color: var(--bg); opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: .95; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="tvname">The Frame</h1>
+    <span id="state" class="pill">…</span>
+  </header>
+
+  <section class="tab active" id="tab-home">
+    <div class="card">
+      <h2>Режим</h2>
+      <div class="row">
+        <button class="primary" data-post="/mode/art">🖼 Art Mode</button>
+        <button data-post="/mode/tv">📺 ТВ</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button data-post="/power/on">Включить</button>
+        <button class="danger" data-post="/power/off" data-confirm="Полностью выключить телевизор?">Выключить</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Избранные приложения</h2>
+      <div class="apps" id="favorites"></div>
+    </div>
+    <div class="card">
+      <h2>Пульт</h2>
+      <div class="dpad">
+        <span></span><button data-key="UP">▲</button><span></span>
+        <button data-key="LEFT">◀</button><button data-key="ENTER">OK</button><button data-key="RIGHT">▶</button>
+        <span></span><button data-key="DOWN">▼</button><span></span>
+      </div>
+      <div class="row">
+        <button data-key="RETURN">↩</button><button data-key="HOME">⌂</button><button data-key="SOURCE">⇄</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button data-key="VOLDOWN">🔉</button><button data-key="MUTE">🔇</button><button data-key="VOLUP">🔊</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-apps">
+    <div class="card">
+      <h2>Все приложения на ТВ</h2>
+      <div class="list" id="installed"><span>Загрузка…</span></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-art">
+    <div class="card">
+      <h2>Art Mode</h2>
+      <label for="brightness">Яркость: <b id="bval">5</b></label>
+      <input type="range" id="brightness" min="1" max="10" value="5">
+      <label for="slide">Смена картин</label>
+      <select id="slide">
+        <option value="0">Выключено</option><option value="3">3 мин</option><option value="15">15 мин</option>
+        <option value="60">1 час</option><option value="720">12 часов</option><option value="1440">1 день</option>
+      </select>
+      <label for="slidecat">Из коллекции</label>
+      <select id="slidecat"></select>
+    </div>
+    <div class="card">
+      <h2>Загрузить фото</h2>
+      <input type="file" id="file" accept="image/jpeg,image/png">
+      <label for="matte">Паспарту</label>
+      <select id="matte">
+        <option value="none">Без паспарту</option><option value="shadowbox_polar">Shadowbox, белое</option>
+        <option value="modern_polar">Modern, белое</option><option value="modern_warm">Modern, тёплое</option>
+        <option value="flexible_polar">Flexible, белое</option>
+      </select>
+      <button class="primary" id="upload" style="width:100%;margin-top:12px">Загрузить и показать</button>
+    </div>
+    <div class="card">
+      <h2>Картины на ТВ</h2>
+      <div class="list" id="art"><span>Загрузка…</span></div>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button class="active" data-tab="home">Главная</button>
+  <button data-tab="apps">Приложения</button>
+  <button data-tab="art">Картины</button>
+</nav>
+<div id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let token = '';
+try { token = localStorage.getItem('frametv-token') || ''; } catch (_) {}
+
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {}, token ? { 'X-API-Token': token } : {});
+  if (opts.json !== undefined) { headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(opts.json); }
+  const res = await fetch('/api' + path, Object.assign({}, opts, { headers }));
+  if (res.status === 401) {
+    token = prompt('Токен доступа (FRAMETV_API_TOKEN)') || '';
+    try { localStorage.setItem('frametv-token', token); } catch (_) {}
+    if (token) return api(path, opts);
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || res.statusText);
+  return body;
+}
+
+async function act(fn, okMsg) {
+  try { await fn(); if (okMsg) toast(okMsg); refreshStatus(); }
+  catch (e) { toast('Ошибка: ' + e.message); }
+}
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function refreshStatus() {
+  try {
+    const s = await api('/status');
+    const el = $('#state');
+    el.className = 'pill ' + (s.power === 'on' ? 'on' : 'off');
+    el.textContent = s.power !== 'on' ? (s.power === 'standby' ? 'Ожидание' : 'Не в сети')
+                   : s.art_mode ? 'Art Mode' : 'ТВ включён';
+    if (s.name) $('#tvname').textContent = s.name.replace(/^\[TV\]\s*/, '');
+  } catch (e) { $('#state').textContent = 'Нет связи'; }
+}
+
+async function loadFavorites() {
+  const favs = await api('/favorites').catch(() => []);
+  $('#favorites').innerHTML = favs.map((a) =>
+    `<button data-launch="${esc(a.app_id)}">${esc(a.name)}</button>`).join('') || '<span>Пусто</span>';
+}
+
+async function loadInstalled() {
+  try {
+    const [apps, favs] = await Promise.all([api('/apps'), api('/favorites')]);
+    const fav = new Set(favs.map((f) => f.app_id));
+    $('#installed').innerHTML = apps.map((a) => `<div><span>${esc(a.name)}</span>
+      <button data-launch="${esc(a.app_id)}">▶</button>
+      <button data-fav="${esc(a.app_id)}" data-on="${fav.has(a.app_id) ? 1 : 0}">${fav.has(a.app_id) ? '★' : '☆'}</button></div>`).join('');
+  } catch (e) { $('#installed').innerHTML = `<span>${esc(e.message)}</span>`; }
+}
+
+async function loadArt() {
+  try {
+    const items = await api('/art');
+    $('#art').innerHTML = items.map((a) => `<div><span>${esc(a.content_id)}</span>
+      <button data-show="${esc(a.content_id)}">Показать</button>
+      ${a.content_id.startsWith('MY_') ? `<button class="danger" data-del="${esc(a.content_id)}">✕</button>` : ''}</div>`).join('') || '<span>Пусто</span>';
+  } catch (e) { $('#art').innerHTML = `<span>${esc(e.message)}</span>`; }
+}
+
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  const d = b.dataset;
+  if (d.tab) {
+    document.querySelectorAll('nav button').forEach((n) => n.classList.toggle('active', n === b));
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.id === 'tab-' + d.tab));
+    if (d.tab === 'apps') loadInstalled();
+    if (d.tab === 'art') loadArt();
+  } else if (d.post) {
+    if (d.confirm && !confirm(d.confirm)) return;
+    act(() => api(d.post, { method: 'POST' }), 'Готово');
+  } else if (d.key) {
+    act(() => api('/key/' + d.key, { method: 'POST' }));
+  } else if (d.launch) {
+    act(() => api(`/apps/${encodeURIComponent(d.launch)}/launch`, { method: 'POST' }), 'Запускаю…');
+  } else if (d.fav) {
+    const req = d.on === '1' ? api('/favorites/' + encodeURIComponent(d.fav), { method: 'DELETE' })
+                             : api('/favorites', { method: 'POST', json: { app_id: d.fav } });
+    act(() => req.then(() => Promise.all([loadFavorites(), loadInstalled()])));
+  } else if (d.show) {
+    act(() => api(`/art/${encodeURIComponent(d.show)}/show`, { method: 'POST' }), 'Показываю');
+  } else if (d.del) {
+    if (!confirm('Удалить фото с телевизора?')) return;
+    act(() => api('/art/' + encodeURIComponent(d.del), { method: 'DELETE' }).then(loadArt), 'Удалено');
+  }
+});
+
+$('#brightness').addEventListener('input', (e) => { $('#bval').textContent = e.target.value; });
+$('#brightness').addEventListener('change', (e) =>
+  act(() => api('/art/brightness', { method: 'POST', json: { value: +e.target.value } }), 'Яркость изменена'));
+const setSlide = () => act(() => api('/art/slideshow', { method: 'POST',
+  json: { minutes: +$('#slide').value, shuffle: true, category_id: $('#slidecat').value } }), 'Слайд-шоу обновлено');
+$('#slide').addEventListener('change', setSlide);
+$('#slidecat').addEventListener('change', setSlide);
+
+$('#upload').addEventListener('click', () => {
+  const f = $('#file').files[0]; if (!f) return toast('Выберите файл');
+  const q = new URLSearchParams({ filename: f.name, matte: $('#matte').value });
+  $('#upload').disabled = true;
+  act(() => api('/art/upload?' + q, { method: 'POST', body: f, headers: { 'Content-Type': f.type } })
+    .then(loadArt).finally(() => { $('#upload').disabled = false; }), 'Загружено');
+});
+
+api('/meta').then((m) => {
+  $('#slidecat').innerHTML = Object.entries(m.slideshow_categories)
+    .map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join('');
+}).catch(() => {});
+refreshStatus(); loadFavorites();
+setInterval(refreshStatus, 15000);
+</script>
+</body>
+</html>
