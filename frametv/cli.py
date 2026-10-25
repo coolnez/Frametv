@@ -9,8 +9,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .catalog_service import CatalogService
 from .config import Settings
-from .domain import TVError
+from .domain import CatalogError, TVError
 from .service import FrameService
 
 
@@ -22,6 +23,12 @@ def build_service(settings: Settings, demo: bool = False) -> FrameService:
     from .adapters.samsung import SamsungFrameGateway
 
     return FrameService(SamsungFrameGateway(settings), settings)
+
+
+def build_catalogs(svc: FrameService) -> CatalogService:
+    from .adapters.catalogs import build_catalogs as museums
+
+    return CatalogService(svc, museums())
 
 
 def _print(data: Any) -> None:
@@ -77,6 +84,23 @@ def _parser() -> argparse.ArgumentParser:
     slide.add_argument("--ordered", action="store_true", help="по порядку, а не вперемешку")
     slide.add_argument("--category", default="MY-C0002")
 
+    sub.add_parser("catalogs", help="источники картин: Samsung на ТВ и музеи мира")
+    sub.add_parser("samsung-art", help="картины Samsung (Art Store / предустановленные) на телевизоре")
+    search = sub.add_parser("art-search", help="поиск картин в музее: art-search met \"van gogh\"")
+    search.add_argument("source", help="aic | met | cleveland")
+    search.add_argument("query")
+    search.add_argument("--limit", type=int, default=10)
+    send = sub.add_parser("art-send", help="отправить картину из музея на ТВ и показать")
+    send.add_argument("source")
+    send.add_argument("item_id")
+    send.add_argument("--matte", default="none")
+    rnd = sub.add_parser("art-random", help="случайная картина из музея по теме (удобно для cron)")
+    rnd.add_argument("source")
+    rnd.add_argument("query")
+    rnd.add_argument("--matte", default="none")
+    check = sub.add_parser("catalog-check", help="проверить доступность музейных каталогов (ТВ не нужен)")
+    check.add_argument("--query", default="landscape")
+
     serve = sub.add_parser("serve", help="веб-пульт для телефона")
     serve.add_argument("--bind", default="0.0.0.0")
     serve.add_argument("--port", type=int, default=8080)
@@ -106,9 +130,19 @@ def main(argv: list[str] | None = None) -> int:
 
             from .api import create_app
 
-            app = create_app(build_service(settings, demo=args.demo))
+            svc = build_service(settings, demo=args.demo)
+            app = create_app(svc, build_catalogs(svc))
             uvicorn.run(app, host=args.bind, port=args.port)
             return 0
+
+        if args.cmd == "catalog-check":
+            # Museums only: works without a configured TV.
+            report = build_catalogs(build_service(settings, demo=True)).check(args.query)
+            for row in report:
+                mark = "OK " if row["ok"] else "ERR"
+                detail = f"{row.get('sample', '')} ({row.get('bytes', 0) // 1024} KB)" if row["ok"] else row["error"]
+                print(f"[{mark}] {row['source']:<10} {detail}")
+            return 0 if all(r["ok"] for r in report) else 1
 
         svc = build_service(settings)
         match args.cmd:
@@ -145,11 +179,22 @@ def main(argv: list[str] | None = None) -> int:
                 print(cid)
             case "art-delete":
                 svc.delete_artwork(args.content_id)
+            case "catalogs":
+                _print(build_catalogs(svc).sources())
+            case "samsung-art":
+                _print([a.to_dict() for a in build_catalogs(svc).samsung_artworks()])
+            case "art-search":
+                for item in build_catalogs(svc).search(args.source, args.query, args.limit):
+                    print(f"{item.item_id:>10}  {item.title} — {item.artist} {item.date}".rstrip())
+            case "art-send":
+                _print(build_catalogs(svc).send(args.source, args.item_id, args.matte))
+            case "art-random":
+                _print(build_catalogs(svc).send_random(args.source, args.query, args.matte))
             case "brightness":
                 svc.set_brightness(args.value)
             case "slideshow":
                 svc.set_slideshow(args.minutes, not args.ordered, args.category)
-    except (TVError, ValueError) as exc:
+    except (TVError, CatalogError, ValueError) as exc:
         print(f"Ошибка: {exc}", file=sys.stderr)
         return 1
     return 0

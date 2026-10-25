@@ -20,7 +20,11 @@ class FakeFrameGateway:
             App("3201907018807", "Netflix"),
             App("org.tizen.browser", "Browser", "NATIVE_LAUNCH"),
         ]
-        self.art = [Artwork("SAM-S0700", "MY-C0008"), Artwork("MY_F0001", "MY-C0002", "shadowbox_polar")]
+        self.art = [
+            Artwork("SAM-S0700", "MY-C0008"),
+            Artwork("SAM-S2701", "MY-C0008"),
+            Artwork("MY_F0001", "MY-C0002", "shadowbox_polar"),
+        ]
         self.current = self.art[0]
         self._ids = itertools.count(2)
 
@@ -90,6 +94,12 @@ class FakeFrameGateway:
     def delete_artwork(self, content_id: str) -> None:
         self._require_on()
         self.art = [a for a in self.art if a.content_id != content_id]
+
+    def artwork_thumbnail(self, content_id: str) -> bytes:
+        self._require_on()
+        if not any(a.content_id == content_id for a in self.art):
+            raise TVError(f"no thumbnail for {content_id}")
+        return b"\xff\xd8fake-thumbnail"
 
     def set_art_brightness(self, value: int) -> None:
         self._require_on()

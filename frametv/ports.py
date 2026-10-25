@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
-from .domain import App, Artwork, TVStatus
+from .domain import App, Artwork, CatalogItem, TVStatus
 
 
 class TVGateway(Protocol):
@@ -30,6 +30,25 @@ class TVGateway(Protocol):
 
     def delete_artwork(self, content_id: str) -> None: ...
 
+    def artwork_thumbnail(self, content_id: str) -> bytes: ...
+
     def set_art_brightness(self, value: int) -> None: ...
 
     def set_slideshow(self, minutes: int, shuffle: bool, category_id: str) -> None: ...
+
+
+class HttpClient(Protocol):
+    def get_json(self, url: str, params: dict[str, str] | None = None) -> Any: ...
+
+    def get_bytes(self, url: str, max_bytes: int) -> bytes: ...
+
+
+class ArtCatalog(Protocol):
+    source_id: str
+    title: str
+
+    def search(self, query: str, limit: int) -> list[CatalogItem]: ...
+
+    def get(self, item_id: str) -> CatalogItem: ...
+
+    def download(self, url: str, max_bytes: int) -> bytes: ...

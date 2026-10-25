@@ -49,5 +49,29 @@ class TVStatus:
         return data
 
 
+@dataclass(frozen=True)
+class CatalogItem:
+    """An artwork from an external catalog (museum open-access API)."""
+
+    source: str
+    item_id: str
+    title: str
+    artist: str = ""
+    date: str = ""
+    thumb_url: str = ""
+    # Best quality first; the next one is tried when a file is too large or unavailable.
+    image_urls: tuple[str, ...] = ()
+    public_domain: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["image_urls"] = list(self.image_urls)
+        return data
+
+
 class TVError(RuntimeError):
     """Raised when the TV cannot perform the request (offline, refused, etc.)."""
+
+
+class CatalogError(RuntimeError):
+    """Raised when an external art catalog is unreachable or returns garbage."""

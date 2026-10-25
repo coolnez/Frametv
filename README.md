@@ -6,6 +6,8 @@
 - 🖼 Art Mode / 📺 ТВ одной кнопкой, включение (Wake-on-LAN) и полное выключение
 - ⭐ избранные приложения (YouTube, Netflix, Кинопоиск, …) — запуск с телефона
 - 🖼 картины: загрузить своё фото с паспарту, показать, удалить, яркость, слайд-шоу
+- 🏛 каталоги: работы **Samsung** на телевизоре + открытые коллекции музеев мира
+  (Art Institute of Chicago, Metropolitan Museum, Cleveland Museum of Art) — поиск и показ в один тап
 - 🎮 пульт: стрелки, OK, назад, домой, громкость
 - веб-страница для телефона + командная строка + JSON API для автоматизаций
 
@@ -56,7 +58,32 @@ frametv serve --demo     # попробовать интерфейс без те
 
 Защитить доступ паролем: `FRAMETV_API_TOKEN=секрет frametv serve` — страница спросит его один раз.
 
-## 5. Командная строка
+## 5. Каталоги картин
+
+| Источник | Что это | Ключ API |
+|---|---|---|
+| `samsung` | Работы Samsung Art Store и предустановленные картины, **уже находящиеся на ТВ** (ID `SAM-…`) | не нужен |
+| `aic` | Art Institute of Chicago — работы в public domain | не нужен |
+| `met` | The Metropolitan Museum of Art — работы в public domain (Open Access) | не нужен |
+| `cleveland` | Cleveland Museum of Art — работы с лицензией CC0 | не нужен |
+
+- Каталог Samsung Art Store локальный API показывает только то, что уже скачано на ТВ;
+  купить/подписаться и скачать новые работы Samsung можно только в самом телевизоре
+  (раздел Art), если сервис доступен в вашем регионе.
+- Картина из музея скачивается, при необходимости уменьшается до 3840×2160 (`pip install ".[images]"`),
+  загружается в «Мои фото» и показывается. Повторная отправка той же работы не загружает её заново.
+- Берутся только работы в public domain / CC0 — их можно законно показывать дома.
+
+Проверить, что музеи доступны из вашей сети (телевизор не нужен):
+
+```bash
+frametv catalog-check
+# [OK ] aic        Water Lilies (412 KB)
+# [OK ] met        ...
+# [OK ] cleveland  ...
+```
+
+## 6. Командная строка
 
 ```bash
 frametv status                    # включён ли, Art Mode, текущая картина
@@ -71,6 +98,10 @@ frametv art-upload photo.jpg --matte shadowbox_polar
 frametv art-list
 frametv brightness 6              # яркость Art Mode 1..10
 frametv slideshow 60              # менять картину каждый час (0 — выкл)
+frametv samsung-art               # работы Samsung на ТВ
+frametv art-search met "van gogh" # поиск в музее: aic | met | cleveland
+frametv art-send met 436532       # показать работу по ID из поиска
+frametv art-random aic landscape  # случайная работа по теме
 ```
 
 Примеры автоматизаций (cron): утром — Art Mode, ночью — выключить:
@@ -78,6 +109,7 @@ frametv slideshow 60              # менять картину каждый ч�
 ```
 0 7  * * *  /path/to/.venv/bin/frametv art
 30 0 * * *  /path/to/.venv/bin/frametv off
+0 9  * * *  /path/to/.venv/bin/frametv art-random met impressionism --matte shadowbox_polar
 ```
 
 ## Настройки
@@ -99,13 +131,16 @@ frametv slideshow 60              # менять картину каждый ч�
 `GET /api/apps`, `GET|POST /api/favorites`, `DELETE /api/favorites/{id}`,
 `POST /api/apps/{id}/launch|close`, `GET /api/art`, `POST /api/art/{id}/show`,
 `POST /api/art/upload?filename=x.jpg&matte=none` (тело — сам файл), `DELETE /api/art/{id}`,
-`POST /api/art/brightness {"value":6}`, `POST /api/art/slideshow {"minutes":60}`.
+`POST /api/art/brightness {"value":6}`, `POST /api/art/slideshow {"minutes":60}`,
+`GET /api/catalogs`, `GET /api/catalogs/samsung/items`, `GET /api/art/{id}/thumbnail`,
+`GET /api/catalogs/{aic|met|cleveland}/search?q=monet`,
+`POST /api/catalogs/{source}/items/{id}/send {"matte":"none"}`, `POST /api/catalogs/{source}/random {"query":"sea"}`.
 Интерактивная документация: `http://<host>:8080/api/docs`.
 
 ## Разработка
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev]"   # включает Pillow
 pytest
 ```
 
@@ -120,3 +155,5 @@ pytest
 | Каждый раз спрашивает «Разрешить» | Проверьте, что `~/.frametv/token.txt` создаётся и не удаляется. |
 | Приложение не запускается | ID из `frametv apps`; часть приложений запускается только с `NATIVE_LAUNCH`. |
 | После обновления прошивки не работает Art | Удалите токен, повторите `frametv setup`. |
+| `catalog-check` → `ERR` | Нет доступа к сайту музея из вашей сети (фильтр, VPN, блокировка) — остальные каталоги работают независимо. |
+| Картина из музея не загружается | Установите `pip install ".[images]"` — большие оригиналы будут уменьшены до 4K. |

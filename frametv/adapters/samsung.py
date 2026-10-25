@@ -179,6 +179,13 @@ class SamsungFrameGateway:
             if not art.delete(content_id):
                 raise TVError(f"TV refused to delete {content_id}")
 
+    def artwork_thumbnail(self, content_id: str) -> bytes:
+        with self._art() as art:
+            data = art.get_thumbnail(content_id)
+        if not data:
+            raise TVError(f"no thumbnail for {content_id}")
+        return bytes(data)  # type: ignore[arg-type]
+
     def set_art_brightness(self, value: int) -> None:
         with self._art() as art:
             art.set_brightness(value)

@@ -44,6 +44,18 @@
   input[type=range] { width: 100%; accent-color: var(--accent); }
   select, input[type=file] { width: 100%; font: inherit; padding: 10px; border-radius: 12px;
            border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  .search { display: flex; gap: 8px; margin-top: 8px; }
+  .search input { flex: 1; min-width: 0; font: inherit; padding: 10px 12px; border-radius: 12px;
+                  border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
+  .tile { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg);
+          display: flex; flex-direction: column; }
+  .tile img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--line); display: block; }
+  .tile p { margin: 6px 8px 0; font-size: 13px; line-height: 1.3; flex: 1;
+            display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .tile small { color: var(--muted); }
+  .tile button { margin: 8px; min-height: 36px; padding: 6px; font-size: 14px; }
+  .hint { color: var(--muted); font-size: 14px; margin: 8px 0 0; }
   nav { position: fixed; inset: auto 0 0 0; display: flex; background: var(--card); border-top: 1px solid var(--line);
         padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
   nav button { flex: 1; border: 0; background: none; color: var(--muted); }
@@ -114,9 +126,20 @@
       <select id="slidecat"></select>
     </div>
     <div class="card">
+      <h2>Каталоги картин</h2>
+      <select id="source"></select>
+      <div class="search" id="searchbox">
+        <input id="q" type="search" placeholder="Моне, landscape, flowers…" enterkeyhint="search">
+        <button class="primary" id="go">Найти</button>
+      </div>
+      <button id="random" style="width:100%;margin-top:8px">🎲 Случайная картина по теме</button>
+      <p class="hint" id="cathint"></p>
+      <div class="grid" id="results"></div>
+    </div>
+    <div class="card">
       <h2>Загрузить фото</h2>
       <input type="file" id="file" accept="image/jpeg,image/png">
-      <label for="matte">Паспарту</label>
+      <label for="matte">Паспарту (и для картин из каталогов)</label>
       <select id="matte">
         <option value="none">Без паспарту</option><option value="shadowbox_polar">Shadowbox, белое</option>
         <option value="modern_polar">Modern, белое</option><option value="modern_warm">Modern, тёплое</option>
@@ -247,6 +270,64 @@ $('#upload').addEventListener('click', () => {
   act(() => api('/art/upload?' + q, { method: 'POST', body: f, headers: { 'Content-Type': f.type } })
     .then(loadArt).finally(() => { $('#upload').disabled = false; }), 'Загружено');
 });
+
+// ---- catalogs ----
+const tokenQ = () => (token ? '?token=' + encodeURIComponent(token) : '');
+const isTV = () => $('#source').value === 'samsung';
+
+function renderTiles(html, emptyMsg) {
+  $('#results').innerHTML = html || `<p class="hint">${esc(emptyMsg)}</p>`;
+}
+
+async function loadSource() {
+  const tv = isTV();
+  $('#searchbox').style.display = tv ? 'none' : '';
+  $('#random').style.display = tv ? 'none' : '';
+  $('#cathint').textContent = tv
+    ? 'Работы Samsung Art Store и предустановленные картины, которые уже есть на телевизоре.'
+    : 'Открытые коллекции музея (public domain). Поиск лучше на английском.';
+  if (!tv) return renderTiles('', 'Введите запрос, например «Monet» или «sea».');
+  renderTiles('', 'Загрузка…');
+  try {
+    const items = await api('/catalogs/samsung/items');
+    renderTiles(items.map((a) => `<div class="tile">
+      <img loading="lazy" alt="" onerror="this.style.visibility='hidden'" src="/api/art/${encodeURIComponent(a.content_id)}/thumbnail${tokenQ()}">
+      <p>${esc(a.content_id)}</p><button data-show="${esc(a.content_id)}">Показать</button></div>`).join(''),
+      'На телевизоре нет работ Samsung.');
+  } catch (e) { renderTiles('', e.message); }
+}
+
+async function search() {
+  const q = $('#q').value.trim(); if (!q) return;
+  renderTiles('', 'Ищу…');
+  try {
+    const items = await api(`/catalogs/${encodeURIComponent($('#source').value)}/search?` + new URLSearchParams({ q, limit: 12 }));
+    renderTiles(items.map((i) => `<div class="tile">
+      <img loading="lazy" alt="" onerror="this.style.visibility='hidden'" referrerpolicy="no-referrer" src="${esc(i.thumb_url)}">
+      <p>${esc(i.title)}<br><small>${esc(i.artist)} ${esc(i.date)}</small></p>
+      <button data-send="${esc(i.item_id)}">На ТВ</button></div>`).join(''), 'Ничего не найдено.');
+  } catch (e) { renderTiles('', e.message); }
+}
+
+$('#source').addEventListener('change', loadSource);
+$('#go').addEventListener('click', search);
+$('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+$('#random').addEventListener('click', () => {
+  const q = $('#q').value.trim() || 'landscape';
+  act(() => api(`/catalogs/${encodeURIComponent($('#source').value)}/random`,
+    { method: 'POST', json: { query: q, matte: $('#matte').value } }), 'Отправлено на ТВ');
+});
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-send]'); if (!b) return;
+  b.disabled = true; b.textContent = 'Загружаю…';
+  act(() => api(`/catalogs/${encodeURIComponent($('#source').value)}/items/${encodeURIComponent(b.dataset.send)}/send`,
+    { method: 'POST', json: { matte: $('#matte').value } })
+    .finally(() => { b.disabled = false; b.textContent = 'На ТВ'; }), 'Показываю на ТВ');
+});
+api('/catalogs').then((list) => {
+  $('#source').innerHTML = list.map((c) => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('');
+  loadSource();
+}).catch(() => {});
 
 api('/meta').then((m) => {
   $('#slidecat').innerHTML = Object.entries(m.slideshow_categories)

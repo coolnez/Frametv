@@ -7,10 +7,11 @@ from importlib.resources import files
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from .domain import TVError
+from .catalog_service import CatalogService
+from .domain import CatalogError, TVError
 from .service import ALLOWED_KEYS, SLIDESHOW_CATEGORIES, FrameService
 
 
@@ -28,14 +29,25 @@ class BrightnessIn(BaseModel):
     value: int = Field(ge=1, le=10)
 
 
+class SendIn(BaseModel):
+    matte: str = Field("none", max_length=64)
+    show: bool = True
+
+
+class RandomIn(BaseModel):
+    query: str = Field(min_length=1, max_length=100)
+    matte: str = Field("none", max_length=64)
+
+
 class SlideshowIn(BaseModel):
     minutes: int = Field(ge=0, le=10080)
     shuffle: bool = True
     category_id: str = "MY-C0002"
 
 
-def create_app(service: FrameService) -> FastAPI:
-    app = FastAPI(title="FrameTV", version="0.1.0")
+def create_app(service: FrameService, catalogs: CatalogService | None = None) -> FastAPI:
+    catalogs = catalogs or CatalogService(service, {})
+    app = FastAPI(title="FrameTV", version="0.2.0")
     index_html = files("frametv").joinpath("web/index.html").read_text(encoding="utf-8")
 
     def auth(x_api_token: str | None = Header(None), token: str | None = Query(None)) -> None:
@@ -50,6 +62,10 @@ def create_app(service: FrameService) -> FastAPI:
     async def tv_error(_: Request, exc: TVError) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, status_code=502)
 
+    @app.exception_handler(CatalogError)
+    async def catalog_error(_: Request, exc: CatalogError) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=502)
+
     @app.exception_handler(ValueError)
     async def bad_value(_: Request, exc: ValueError) -> JSONResponse:
         return JSONResponse({"detail": str(exc)}, status_code=400)
@@ -60,6 +76,7 @@ def create_app(service: FrameService) -> FastAPI:
 
     api = FastAPI()  # mounted sub-app so auth applies to every /api route
     api.add_exception_handler(TVError, tv_error)
+    api.add_exception_handler(CatalogError, catalog_error)
     api.add_exception_handler(ValueError, bad_value)
     app.mount("/api", api)
     deps = [Depends(auth)]
@@ -147,6 +164,33 @@ def create_app(service: FrameService) -> FastAPI:
     def slideshow(body: SlideshowIn) -> dict[str, Any]:
         service.set_slideshow(body.minutes, body.shuffle, body.category_id)
         return ok
+
+    @api.get("/art/{content_id}/thumbnail", dependencies=deps)
+    def thumbnail(content_id: str) -> Response:
+        data = catalogs.thumbnail(content_id)
+        media = "image/png" if data.startswith(b"\x89PNG") else "image/jpeg"
+        return Response(data, media_type=media, headers={"Cache-Control": "max-age=86400"})
+
+    @api.get("/catalogs", dependencies=deps)
+    def catalog_sources() -> list[dict[str, Any]]:
+        return catalogs.sources()
+
+    @api.get("/catalogs/samsung/items", dependencies=deps)
+    def samsung_items() -> list[dict[str, Any]]:
+        return [a.to_dict() for a in catalogs.samsung_artworks()]
+
+    @api.get("/catalogs/{source}/search", dependencies=deps)
+    def catalog_search(source: str, q: str = Query(..., max_length=100), limit: int = 12) -> list[dict[str, Any]]:
+        return [i.to_dict() for i in catalogs.search(source, q, limit)]
+
+    @api.post("/catalogs/{source}/random", dependencies=deps)
+    def catalog_random(source: str, body: RandomIn) -> dict[str, Any]:
+        return catalogs.send_random(source, body.query, body.matte)
+
+    @api.post("/catalogs/{source}/items/{item_id}/send", dependencies=deps)
+    def catalog_send(source: str, item_id: str, body: SendIn | None = None) -> dict[str, Any]:
+        body = body or SendIn()
+        return catalogs.send(source, item_id, body.matte, body.show)
 
     @api.post("/art/{content_id}/show", dependencies=deps)
     def show(content_id: str) -> dict[str, Any]:

@@ -23,6 +23,8 @@ class Settings:
     token_file: str = str(DEFAULT_HOME / "token.txt")
     api_token: str = ""  # optional shared secret for the web API
     favorites: list[App] = field(default_factory=list)
+    # "<catalog>:<item id>" -> TV content_id, so a museum work is uploaded only once
+    uploads: dict[str, str] = field(default_factory=dict)
     path: Path = DEFAULT_HOME / "config.json"
 
     _ENV = {
@@ -54,6 +56,7 @@ class Settings:
             App(app_id=str(f["app_id"]), name=f.get("name", f["app_id"]), app_type=f.get("app_type", "DEEP_LINK"))
             for f in raw.get("favorites", [])
         ]
+        settings.uploads = {str(k): str(v) for k, v in raw.get("uploads", {}).items()}
         if not settings.favorites:
             settings.favorites = list(DEFAULT_FAVORITES)
         return settings
@@ -63,6 +66,7 @@ class Settings:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         data = {name: getattr(self, name) for name in self._ENV}
         data["favorites"] = [f.to_dict() for f in self.favorites]
+        data["uploads"] = self.uploads
         self.path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
